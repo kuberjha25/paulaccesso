@@ -147,42 +147,62 @@ export function UserManagement() {
 
   return (
     <>
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-3xl font-bold text-blue-600">Admin Panel</h2>
-          <p className="text-gray-700 dark:text-gray-300 mt-2">Manage users and system settings</p>
+      <div className="space-y-4 sm:space-y-6">
+        {/* Header Section */}
+        <div className="px-2 sm:px-0">
+          <h2 className="text-2xl sm:text-3xl font-bold text-blue-600">Admin Panel</h2>
+          <p className="text-sm sm:text-base text-gray-700 dark:text-gray-300 mt-1 sm:mt-2">
+            Manage users and system settings
+          </p>
         </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-4">
-            <div>
-              <CardTitle>User Management</CardTitle>
-              <CardDescription>Manage system users and their roles</CardDescription>
+        {/* User Management Card */}
+        <Card className="mx-2 sm:mx-0">
+          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="w-full sm:w-auto">
+              <CardTitle className="text-xl sm:text-2xl">User Management</CardTitle>
+              <CardDescription className="text-sm">Manage system users and their roles</CardDescription>
             </div>
             {currentUser?.role === "ADMIN" && (
-              <Button onClick={() => handleOpenModal()} className="bg-blue-600">
-                <UserPlus className="w-4 h-4 mr-2" /> Add User
+              <Button 
+                onClick={() => handleOpenModal()} 
+                className="bg-blue-600 w-full sm:w-auto"
+                size="sm"
+              >
+                <UserPlus className="w-4 h-4 mr-2" /> 
+                <span className="hidden sm:inline">Add User</span>
+                <span className="sm:hidden">Add</span>
               </Button>
             )}
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {users.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">No users found</div>
+                <div className="text-center py-8 sm:py-12 text-gray-500 text-sm sm:text-base">
+                  No users found
+                </div>
               ) : (
                 users.map((u) => (
-                  <div key={u.id} className="flex items-center justify-between p-4 rounded-lg border hover:shadow-md transition">
-                    <div className="flex items-center gap-4">
+                  <div 
+                    key={u.id} 
+                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 sm:p-4 rounded-lg border hover:shadow-md transition gap-3 sm:gap-4"
+                  >
+                    {/* User Info Section */}
+                    <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
                       {u.photo ? (
-                        <img src={u.photo} alt={u.name} className="w-12 h-12 rounded-full object-cover" />
+                        <img 
+                          src={u.photo} 
+                          alt={u.name} 
+                          className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover flex-shrink-0" 
+                        />
                       ) : (
-                        <div className="w-12 h-12 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-2xl">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xl sm:text-2xl flex-shrink-0">
                           {getRoleIcon(u.role)}
                         </div>
                       )}
-                      <div>
-                        <p className="font-semibold">{u.name}</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">{u.email}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-sm sm:text-base truncate">{u.name}</p>
+                        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">{u.email}</p>
                         {u.designation && (
                           <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${getDesignationBadgeColor(u.designation)}`}>
                             {u.designation}
@@ -190,19 +210,31 @@ export function UserManagement() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getRoleBadgeColor(u.role)}`}>
-                        {u.role}
+                    
+                    {/* Actions Section */}
+                    <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${getRoleBadgeColor(u.role)}`}>
+                        {u.role === "ADMIN" ? "Admin" : u.role === "RECEPTIONIST" ? "Receptionist" : "Employee"}
                       </span>
                       {currentUser?.role === "ADMIN" && u.role !== "ADMIN" && (
-                        <>
-                          <Button size="sm" variant="ghost" onClick={() => handleOpenModal(u)}>
-                            <Edit className="w-4 h-4" />
+                        <div className="flex items-center gap-1 sm:gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            onClick={() => handleOpenModal(u)}
+                            className="h-8 w-8 sm:h-9 sm:w-9 p-0"
+                          >
+                            <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           </Button>
-                          <Button size="sm" variant="ghost" className="text-red-600" onClick={() => handleDelete(u.id)}>
-                            <Trash2 className="w-4 h-4" />
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            className="text-red-600 h-8 w-8 sm:h-9 sm:w-9 p-0" 
+                            onClick={() => handleDelete(u.id)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           </Button>
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -213,68 +245,82 @@ export function UserManagement() {
         </Card>
       </div>
 
+      {/* Add/Edit User Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-[calc(100%-1rem)] sm:max-w-md mx-2 sm:mx-0 p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle>{editingUser ? "Edit User" : "Add New User"}</DialogTitle>
+            <DialogTitle className="text-lg sm:text-xl">
+              {editingUser ? "Edit User" : "Add New User"}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 max-h-[calc(100vh-8rem)] overflow-y-auto">
+            {/* Profile Photo Section */}
             <div>
-              <Label>Profile Photo</Label>
+              <Label className="text-sm font-medium">Profile Photo</Label>
               <div className="mt-2">
                 {formData.photo ? (
                   <div className="relative inline-block">
-                    <img src={formData.photo} alt="Profile" className="w-20 h-20 rounded-full object-cover" />
+                    <img 
+                      src={formData.photo} 
+                      alt="Profile" 
+                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover" 
+                    />
                     <button
                       onClick={() => setShowCamera(true)}
-                      className="absolute -bottom-2 -right-2 bg-blue-600 text-white p-1 rounded-full hover:bg-blue-700"
+                      className="absolute -bottom-2 -right-2 bg-blue-600 text-white p-1.5 sm:p-2 rounded-full hover:bg-blue-700 transition-colors"
                     >
-                      <Camera className="w-4 h-4" />
+                      <Camera className="w-3 h-3 sm:w-4 sm:h-4" />
                     </button>
                     <button
                       onClick={() => setFormData({ ...formData, photo: "" })}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600"
+                      className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 transition-colors"
                     >
-                      <X className="w-3 h-3" />
+                      <X className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                     </button>
                   </div>
                 ) : (
                   <button
                     onClick={() => setShowCamera(true)}
-                    className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
+                    className="flex items-center justify-center gap-2 w-full sm:w-auto px-3 py-2 sm:px-4 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm"
                   >
-                    <Camera className="w-4 h-4" /> Take Photo
+                    <Camera className="w-4 h-4" /> 
+                    <span>Take Photo</span>
                   </button>
                 )}
               </div>
             </div>
             
+            {/* Name Field */}
             <div>
-              <Label>Name *</Label>
+              <Label className="text-sm font-medium">Name *</Label>
               <Input 
                 value={formData.name} 
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
                 placeholder="Full name"
+                className="mt-1 text-sm"
               />
             </div>
             
+            {/* Email Field */}
             <div>
-              <Label>Email *</Label>
+              <Label className="text-sm font-medium">Email *</Label>
               <Input 
                 type="email" 
                 value={formData.email} 
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
                 placeholder="email@company.com"
+                className="mt-1 text-sm"
               />
             </div>
             
+            {/* Designation Field */}
             <div>
-              <Label>Designation</Label>
+              <Label className="text-sm font-medium">Designation</Label>
               <Select 
                 value={showCustomInput ? "Other" : formData.designation} 
                 onValueChange={handleDesignationChange}
               >
-                <SelectTrigger>
+                <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Select designation" />
                 </SelectTrigger>
                 <SelectContent>
@@ -290,17 +336,23 @@ export function UserManagement() {
                     value={customDesignation} 
                     onChange={handleCustomDesignationChange}
                     placeholder="Enter custom designation"
-                    className="mt-1"
+                    className="text-sm"
                   />
-                  <p className="text-xs text-gray-500 mt-1">e.g., Chief Technology Officer, VP Engineering, etc.</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    e.g., Chief Technology Officer, VP Engineering, etc.
+                  </p>
                 </div>
               )}
             </div>
             
+            {/* Role Field */}
             <div>
-              <Label>Role</Label>
-              <Select value={formData.role} onValueChange={(val) => setFormData({ ...formData, role: val })}>
-                <SelectTrigger>
+              <Label className="text-sm font-medium">Role</Label>
+              <Select 
+                value={formData.role} 
+                onValueChange={(val) => setFormData({ ...formData, role: val })}
+              >
+                <SelectTrigger className="mt-1">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -311,17 +363,24 @@ export function UserManagement() {
               </Select>
             </div>
             
-            <Button onClick={handleSubmit} disabled={loading} className="w-full">
+            {/* Submit Button */}
+            <Button 
+              onClick={handleSubmit} 
+              disabled={loading} 
+              className="w-full text-sm sm:text-base"
+              size="default"
+            >
               {loading ? "Saving..." : editingUser ? "Update User" : "Create User"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
+      {/* Camera Modal */}
       <Dialog open={showCamera} onOpenChange={setShowCamera}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-[calc(100%-1rem)] sm:max-w-md mx-2 sm:mx-0 p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle>Take Profile Photo</DialogTitle>
+            <DialogTitle className="text-lg sm:text-xl">Take Profile Photo</DialogTitle>
           </DialogHeader>
           <CameraCapture onCapture={handlePhotoCapture} capturedImage={formData.photo} />
         </DialogContent>

@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Camera, RotateCcw, AlertCircle, Image, Upload, X } from "lucide-react";
+import { Camera, RotateCcw, AlertCircle, Image, Upload, X, RefreshCw } from "lucide-react";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 
@@ -12,44 +12,72 @@ export function CameraCapture({ onCapture, capturedImage }) {
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [facingMode, setFacingMode] = useState("user"); // "user" for front, "environment" for back
 
-  const initCamera = async () => {
+  const initCamera = async (mode = facingMode) => {
     try {
+      // Stop existing stream if any
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      
       setError(null);
       setPermissionDenied(false);
+      
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: "user",
+          facingMode: { exact: mode },
           width: { ideal: 1280 },
           height: { ideal: 720 },
         },
       });
+      
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
         setStream(mediaStream);
       }
     } catch (err) {
-      if (err.name === "NotAllowedError") {
-        setPermissionDenied(true);
-        setError("Camera access was denied");
-      } else if (err.name === "NotFoundError") {
-        setError("No camera found");
-      } else {
-        setError(`Camera error: ${err.message}`);
+      // If exact facingMode fails, try without exact constraint
+      try {
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: mode,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+          setStream(mediaStream);
+        }
+      } catch (fallbackErr) {
+        if (fallbackErr.name === "NotAllowedError") {
+          setPermissionDenied(true);
+          setError("Camera access was denied");
+        } else if (fallbackErr.name === "NotFoundError") {
+          setError("No camera found");
+        } else {
+          setError(`Camera error: ${fallbackErr.message}`);
+        }
       }
     }
+  };
+
+  const switchCamera = async () => {
+    const newMode = facingMode === "user" ? "environment" : "user";
+    setFacingMode(newMode);
+    await initCamera(newMode);
   };
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Check file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         alert("File is too large! Maximum size is 5MB");
         return;
       }
       
-      // Check file type
       if (!file.type.startsWith("image/")) {
         alert("Please select an image file");
         return;
@@ -59,7 +87,6 @@ export function CameraCapture({ onCapture, capturedImage }) {
       reader.onload = (event) => {
         const imageData = event.target.result;
         setPreviewUrl(imageData);
-        // Automatically use the selected image
         onCapture(imageData);
         setShowGallery(false);
       };
@@ -94,12 +121,17 @@ export function CameraCapture({ onCapture, capturedImage }) {
 
   const handleCameraClick = () => {
     setShowGallery(false);
-    initCamera();
+    setFacingMode("user");
+    initCamera("user");
   };
 
   useEffect(() => {
     initCamera();
-    return () => stream?.getTracks().forEach((track) => track.stop());
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+    };
   }, []);
 
   const capturePhoto = () => {
@@ -112,7 +144,11 @@ export function CameraCapture({ onCapture, capturedImage }) {
       context.drawImage(video, 0, 0);
       const imageData = canvas.toDataURL("image/jpeg", 0.8);
       onCapture(imageData);
-      stream?.getTracks().forEach((track) => track.stop());
+      
+      // Stop the stream after capturing
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
     }
   };
 
@@ -135,7 +171,7 @@ export function CameraCapture({ onCapture, capturedImage }) {
               <p className="text-sm text-gray-600 mb-4">
                 Please allow camera access in your browser.
               </p>
-              <Button onClick={initCamera}>Try Again</Button>
+              <Button onClick={() => initCamera()}>Try Again</Button>
             </div>
           </div>
         )}
@@ -145,7 +181,7 @@ export function CameraCapture({ onCapture, capturedImage }) {
             <div className="text-center">
               <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
               <p className="text-sm text-gray-600 mb-4">{error}</p>
-              <Button onClick={initCamera}>Retry</Button>
+              <Button onClick={() => initCamera()}>Retry</Button>
             </div>
           </div>
         )}
@@ -169,6 +205,17 @@ export function CameraCapture({ onCapture, capturedImage }) {
         )}
 
         <canvas ref={canvasRef} className="hidden" />
+        
+        {/* Flip Camera Button - Only show when camera is active */}
+        {!capturedImage && !error && stream && (
+          <button
+            onClick={switchCamera}
+            className="absolute bottom-4 right-4 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors backdrop-blur-sm"
+            title="Switch Camera"
+          >
+            <RefreshCw className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       <div className="flex gap-2 flex-wrap">

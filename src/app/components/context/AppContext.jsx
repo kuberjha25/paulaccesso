@@ -28,8 +28,12 @@ export const AppProvider = ({ children }) => {
   const [employees, setEmployees] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [availableTags, setAvailableTags] = useState([]);
 
-  const API_BASE = "http://localhost:8080/api";
+  // Change this based on your environment
+  const API_BASE = "https://paulaccesso.paulmerchants.net/api";
+
+  // const API_BASE = "http://localhost:8598/api";
 
   // Dark mode effect
   useEffect(() => {
@@ -62,17 +66,32 @@ export const AppProvider = ({ children }) => {
   const fetchCurrentUser = async () => {
     try {
       const response = await fetch(`${API_BASE}/users/me`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       });
+
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
         localStorage.setItem("user", JSON.stringify(userData));
-      } else {
+      } else if (response.status === 401 || response.status === 403) {
+        // Token expired or invalid
         logout();
+      } else {
+        const errorData = await response.json();
+        addNotification({
+          type: "error",
+          message: errorData.message || "Failed to fetch user data",
+        });
       }
     } catch (error) {
       console.error("Failed to fetch user:", error);
+      addNotification({
+        type: "error",
+        message: "Network error. Please check your connection.",
+      });
       logout();
     }
   };
@@ -80,14 +99,31 @@ export const AppProvider = ({ children }) => {
   const fetchVisitors = async () => {
     try {
       const response = await fetch(`${API_BASE}/visitors`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       });
+
       if (response.ok) {
         const data = await response.json();
         setVisitors(data);
+      } else if (response.status === 401) {
+        logout();
+      } else {
+        const errorData = await response.json();
+        console.error("Failed to fetch visitors:", errorData);
+        addNotification({
+          type: "error",
+          message: errorData.message || "Failed to fetch visitors",
+        });
       }
     } catch (error) {
       console.error("Failed to fetch visitors:", error);
+      addNotification({
+        type: "error",
+        message: "Network error while fetching visitors",
+      });
     }
   };
 
@@ -97,6 +133,9 @@ export const AppProvider = ({ children }) => {
       if (response.ok) {
         const data = await response.json();
         setEmployees(data);
+      } else {
+        const errorData = await response.json();
+        console.error("Failed to fetch employees:", errorData);
       }
     } catch (error) {
       console.error("Failed to fetch employees:", error);
@@ -107,11 +146,23 @@ export const AppProvider = ({ children }) => {
     if (!token || user?.role !== "ADMIN") return;
     try {
       const response = await fetch(`${API_BASE}/users`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       });
+
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
+      } else if (response.status === 403) {
+        addNotification({
+          type: "error",
+          message: "You don't have permission to view users",
+        });
+      } else {
+        const errorData = await response.json();
+        console.error("Failed to fetch users:", errorData);
       }
     } catch (error) {
       console.error("Failed to fetch users:", error);
@@ -126,16 +177,44 @@ export const AppProvider = ({ children }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
+
       const data = await response.json();
+
       if (response.ok) {
-        addNotification({ type: "success", message: data.message });
+        addNotification({
+          type: "success",
+          message: data.message || "OTP sent successfully!",
+        });
         return true;
       } else {
-        addNotification({ type: "error", message: data.status===500? 'Not an Admin or Receptionist': data.error || "Internal Server Error" });
+        // Handle different error scenarios
+        let errorMessage = data.message || "Failed to send OTP";
+
+        if (response.status === 400) {
+          if (data.message === "User not found") {
+            errorMessage = "User not found. Please check your email.";
+          } else if (
+            data.message ===
+            "Access denied. Only admin and receptionist can login."
+          ) {
+            errorMessage =
+              "Access denied. Only admin and receptionist can login.";
+          } else {
+            errorMessage = data.message || "Invalid request";
+          }
+        } else if (response.status === 500) {
+          errorMessage = "Server error. Please try again later.";
+        }
+
+        addNotification({ type: "error", message: errorMessage });
         return false;
       }
     } catch (error) {
-      addNotification({ type: "error", message: "Failed to send OTP" });
+      console.error("Send OTP error:", error);
+      addNotification({
+        type: "error",
+        message: "Network error. Please check your connection.",
+      });
       return false;
     } finally {
       setLoading(false);
@@ -150,20 +229,39 @@ export const AppProvider = ({ children }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp }),
       });
+
       const data = await response.json();
+
       if (response.ok) {
         setToken(data.accessToken);
         setUser(data.user);
         localStorage.setItem("token", data.accessToken);
         localStorage.setItem("user", JSON.stringify(data.user));
-        addNotification({ type: "success", message: "Login successful!" });
+        addNotification({
+          type: "success",
+          message: "Login successful! Welcome back.",
+        });
         return true;
       } else {
-        addNotification({ type: "error", message: data.message || "Invalid OTP" });
+        let errorMessage = data.message || "Invalid OTP";
+
+        if (response.status === 400) {
+          if (data.message === "Invalid or expired OTP") {
+            errorMessage = "Invalid or expired OTP. Please request a new one.";
+          } else {
+            errorMessage = data.message || "Invalid OTP";
+          }
+        }
+
+        addNotification({ type: "error", message: errorMessage });
         return false;
       }
     } catch (error) {
-      addNotification({ type: "error", message: "Failed to verify OTP" });
+      console.error("Verify OTP error:", error);
+      addNotification({
+        type: "error",
+        message: "Network error. Please try again.",
+      });
       return false;
     } finally {
       setLoading(false);
@@ -181,21 +279,36 @@ export const AppProvider = ({ children }) => {
         },
         body: JSON.stringify(visitorData),
       });
+
       const data = await response.json();
+
       if (response.ok) {
         setVisitors([data, ...visitors]);
         addNotification({
           type: "success",
           message: `${data.name} registered successfully!`,
-          description: `Notification sent to ${data.personToMeet}`,
+          description: `Notification sent to ${data.personToMeetDetails?.name || data.personToMeet}`,
         });
         return data;
       } else {
-        addNotification({ type: "error", message: data.message || "Registration failed" });
+        let errorMessage = data.message || "Registration failed";
+
+        if (response.status === 400) {
+          if (data.message === "User not found") {
+            errorMessage =
+              "Employee not found. Please check the email address.";
+          }
+        }
+
+        addNotification({ type: "error", message: errorMessage });
         return null;
       }
     } catch (error) {
-      addNotification({ type: "error", message: "Failed to register visitor" });
+      console.error("Register visitor error:", error);
+      addNotification({
+        type: "error",
+        message: "Network error. Please check your connection.",
+      });
       return null;
     } finally {
       setLoading(false);
@@ -214,17 +327,29 @@ export const AppProvider = ({ children }) => {
         },
         body: JSON.stringify(body),
       });
+
       const data = await response.json();
+
       if (response.ok) {
-        setVisitors(visitors.map(v => v.id === id ? data : v));
-        addNotification({ type: "success", message: `${data.name} checked out` });
+        setVisitors(visitors.map((v) => (v.id === id ? data : v)));
+        addNotification({
+          type: "success",
+          message: `${data.name} checked out successfully`,
+        });
         return data;
       } else {
-        addNotification({ type: "error", message: "Checkout failed" });
+        addNotification({
+          type: "error",
+          message: data.message || "Checkout failed",
+        });
         return null;
       }
     } catch (error) {
-      addNotification({ type: "error", message: "Failed to checkout" });
+      console.error("Checkout error:", error);
+      addNotification({
+        type: "error",
+        message: "Network error. Please try again.",
+      });
       return null;
     } finally {
       setLoading(false);
@@ -242,17 +367,35 @@ export const AppProvider = ({ children }) => {
         },
         body: JSON.stringify(userData),
       });
+
       const data = await response.json();
+
       if (response.ok) {
         setUsers([...users, data]);
-        addNotification({ type: "success", message: `User ${data.name} created` });
+        addNotification({
+          type: "success",
+          message: `User ${data.name} created successfully`,
+        });
         return data;
       } else {
-        addNotification({ type: "error", message: data.message || "Failed to create user" });
+        let errorMessage = data.message || "Failed to create user";
+
+        if (response.status === 400) {
+          if (data.message === "Email already exists") {
+            errorMessage =
+              "Email already exists. Please use a different email.";
+          }
+        }
+
+        addNotification({ type: "error", message: errorMessage });
         return null;
       }
     } catch (error) {
-      addNotification({ type: "error", message: "Failed to create user" });
+      console.error("Create user error:", error);
+      addNotification({
+        type: "error",
+        message: "Network error. Please try again.",
+      });
       return null;
     } finally {
       setLoading(false);
@@ -270,17 +413,29 @@ export const AppProvider = ({ children }) => {
         },
         body: JSON.stringify(userData),
       });
+
       const data = await response.json();
+
       if (response.ok) {
-        setUsers(users.map(u => u.id === id ? data : u));
-        addNotification({ type: "success", message: `User ${data.name} updated` });
+        setUsers(users.map((u) => (u.id === id ? data : u)));
+        addNotification({
+          type: "success",
+          message: `User ${data.name} updated successfully`,
+        });
         return data;
       } else {
-        addNotification({ type: "error", message: data.message || "Failed to update user" });
+        addNotification({
+          type: "error",
+          message: data.message || "Failed to update user",
+        });
         return null;
       }
     } catch (error) {
-      addNotification({ type: "error", message: "Failed to update user" });
+      console.error("Update user error:", error);
+      addNotification({
+        type: "error",
+        message: "Network error. Please try again.",
+      });
       return null;
     } finally {
       setLoading(false);
@@ -292,18 +447,33 @@ export const AppProvider = ({ children }) => {
     try {
       const response = await fetch(`${API_BASE}/users/${id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       });
+
       if (response.ok) {
-        setUsers(users.filter(u => u.id !== id));
-        addNotification({ type: "success", message: "User deleted successfully" });
+        setUsers(users.filter((u) => u.id !== id));
+        addNotification({
+          type: "success",
+          message: "User deleted successfully",
+        });
         return true;
       } else {
-        addNotification({ type: "error", message: "Failed to delete user" });
+        const data = await response.json();
+        addNotification({
+          type: "error",
+          message: data.message || "Failed to delete user",
+        });
         return false;
       }
     } catch (error) {
-      addNotification({ type: "error", message: "Failed to delete user" });
+      console.error("Delete user error:", error);
+      addNotification({
+        type: "error",
+        message: "Network error. Please try again.",
+      });
       return false;
     } finally {
       setLoading(false);
@@ -312,13 +482,21 @@ export const AppProvider = ({ children }) => {
 
   const addNotification = (notification) => {
     const id = Date.now();
-    setNotifications(prev => [...prev, { id, ...notification }]);
+    setNotifications((prev) => [...prev, { id, ...notification }]);
     setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
     }, 5000);
   };
 
   const logout = () => {
+    // Optional: Call logout endpoint if you have one
+    if (token) {
+      fetch(`${API_BASE}/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(console.error);
+    }
+
     setToken(null);
     setUser(null);
     setVisitors([]);
@@ -328,16 +506,103 @@ export const AppProvider = ({ children }) => {
     addNotification({ type: "info", message: "Logged out successfully" });
   };
 
-  const toggleDarkMode = () => setDarkMode(prev => !prev);
+  const toggleDarkMode = () => setDarkMode((prev) => !prev);
 
   const getStats = () => {
     const today = new Date().toDateString();
-    const todayVisitors = visitors.filter(v => 
-      new Date(v.checkInTime).toDateString() === today
+    const todayVisitors = visitors.filter(
+      (v) => new Date(v.checkInTime).toDateString() === today,
     );
-    const activeNow = todayVisitors.filter(v => v.active).length;
-    const checkedOut = todayVisitors.filter(v => !v.active).length;
-    return { totalToday: todayVisitors.length, activeNow, checkedOut };
+    const activeNow = todayVisitors.filter((v) => v.active).length;
+    const checkedOut = todayVisitors.filter((v) => !v.active).length;
+    const totalActive = visitors.filter((v) => v.active).length; // All active visitors
+
+    return {
+      totalToday: todayVisitors.length,
+      activeNow,
+      checkedOut,
+      totalActive, // Optional
+    };
+  };
+
+  // Function to fetch available tags
+  const fetchAvailableTags = async () => {
+    if (!token) return [];
+    try {
+      const response = await fetch(`${API_BASE}/tags/available`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableTags(data);
+        return data;
+      }
+      return [];
+    } catch (error) {
+      console.error("Failed to fetch tags:", error);
+      return [];
+    }
+  };
+
+  // Function to assign tag to visitor
+  const assignTagToVisitor = async (visitorId, tagNumber) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/tags/assign`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ visitorId, tagNumber }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Update visitors list
+        setVisitors(visitors.map((v) => (v.id === visitorId ? data : v)));
+        // Refresh available tags
+        fetchAvailableTags();
+        addNotification({
+          type: "success",
+          message: `Tag ${tagNumber} assigned to ${data.name}`,
+        });
+        return data;
+      } else {
+        addNotification({
+          type: "error",
+          message: data.message || "Failed to assign tag",
+        });
+        return null;
+      }
+    } catch (error) {
+      console.error("Assign tag error:", error);
+      addNotification({
+        type: "error",
+        message: "Network error. Please try again.",
+      });
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Function to get all tags (for admin)
+  const getAllTags = async () => {
+    if (!token) return [];
+    try {
+      const response = await fetch(`${API_BASE}/tags`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+      return [];
+    } catch (error) {
+      console.error("Failed to fetch all tags:", error);
+      return [];
+    }
   };
 
   return (
@@ -362,6 +627,10 @@ export const AppProvider = ({ children }) => {
         logout,
         getStats,
         notifications,
+        availableTags,
+        fetchAvailableTags,
+        assignTagToVisitor,
+        getAllTags,
       }}
     >
       {children}

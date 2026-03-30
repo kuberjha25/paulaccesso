@@ -80,7 +80,7 @@ export function RootLayout() {
             <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <div className="w-18 h-18 rounded-xl overflow-hidden">
                 <img
-                  src="/favicon.png"
+                  src="/pml_logo.png"
                   alt="Paul Accesso"
                   className="w-full h-full object-cover"
                 />
@@ -163,7 +163,7 @@ export function RootLayout() {
               <div className="flex items-center gap-2 sm:gap-3">
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden">
                   <img
-                    src="/favicon.png"
+                    src="/pml_logo.png"
                     alt="Paul Accesso"
                     className="w-full h-full object-cover"
                   />
