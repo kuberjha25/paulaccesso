@@ -1,4 +1,4 @@
-import { Outlet, Link, useLocation, useNavigate } from "react-router";
+import { Outlet, Link, useLocation, useNavigate, Navigate } from "react-router";
 import {
   UserPlus,
   ClipboardList,
@@ -27,7 +27,9 @@ export function RootLayout() {
     logout,
     sendOtp,
     verifyOtp,
-    loading,
+    loading, // Rename this to avoid conflict with appLoading
+    isAuthInitialized,
+    token // Add token here - this was missing!
   } = useApp();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(!user);
@@ -36,7 +38,13 @@ export function RootLayout() {
   const [otpSent, setOtpSent] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const navItems = [
+    { path: "/", icon: Home, label: "Dashboard" },
+    { path: "/register", icon: UserPlus, label: "Register Visitor" },
+    { path: "/log", icon: ClipboardList, label: "Visitor Log" },
+  ];
 
+  // Then your existing logic
   useEffect(() => {
     setShowLogin(!user);
     if (user) {
@@ -71,6 +79,23 @@ export function RootLayout() {
     setShowLogoutConfirm(false);
     navigate("/");
   };
+
+  // Show loading screen while checking auth
+  if (!isAuthInitialized) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+
+  if (user?.role === "ADMIN") {
+    navItems.push({ path: "/admin", icon: Users, label: "Admin Panel" });
+  }
 
   if (showLogin) {
     return (
@@ -143,16 +168,6 @@ export function RootLayout() {
     );
   }
 
-  const navItems = [
-    { path: "/", icon: Home, label: "Dashboard" },
-    { path: "/register", icon: UserPlus, label: "Register Visitor" },
-    { path: "/log", icon: ClipboardList, label: "Visitor Log" },
-  ];
-
-  if (user?.role === "ADMIN") {
-    navItems.push({ path: "/admin", icon: Users, label: "Admin Panel" });
-  }
-
   return (
     <>
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 transition-colors duration-300">
@@ -160,7 +175,10 @@ export function RootLayout() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
             <div className="flex items-center justify-between">
               {/* Logo and Title - Always visible */}
-              <div className="flex items-center gap-2 sm:gap-3">
+              <div
+                className="flex items-center gap-2 sm:gap-3 cursor-pointer hover:opacity-80 transition"
+                onClick={() => navigate("/")}
+              >
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden">
                   <img
                     src="/pml_logo.png"
@@ -258,11 +276,10 @@ export function RootLayout() {
                       <Link key={item.path} to={item.path}>
                         <Button
                           variant={isActive ? "default" : "ghost"}
-                          className={`w-full justify-start ${
-                            isActive
-                              ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
-                              : "text-gray-700 dark:text-gray-300"
-                          }`}
+                          className={`w-full justify-start ${isActive
+                            ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
+                            : "text-gray-700 dark:text-gray-300"
+                            }`}
                         >
                           <item.icon className="w-4 h-4 mr-2" />
                           {item.label}

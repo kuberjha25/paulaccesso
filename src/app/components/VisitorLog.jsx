@@ -48,6 +48,7 @@ import {
   AlertTriangle,
   Camera,
   Tag,
+  Mail
 } from "lucide-react";
 import { useApp } from "./context/AppContext";
 
@@ -60,6 +61,8 @@ export function VisitorLog() {
     fetchAvailableTags,
     availableTags,
     token,
+    fetchVisitors,
+    API_BASE
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -67,16 +70,17 @@ export function VisitorLog() {
   const [selectedVisitor, setSelectedVisitor] = useState(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isDownloadDialogOpen, setIsDownloadDialogOpen] = useState(false);
-  const [isCheckoutConfirmOpen, setIsCheckoutConfirmOpen] = useState(false);
   const [visitorToCheckout, setVisitorToCheckout] = useState(null);
   const [checkoutPhoto, setCheckoutPhoto] = useState("");
   const [showCheckoutCamera, setShowCheckoutCamera] = useState(false);
+  const [isCheckingOut, setIsCheckingOut] = useState(false); // Local loading state for checkout
 
   // Tag assignment states
   const [showTagDialog, setShowTagDialog] = useState(false);
   const [visitorForTag, setVisitorForTag] = useState(null);
   const [selectedTag, setSelectedTag] = useState("");
   const [localAvailableTags, setLocalAvailableTags] = useState([]);
+  const [isAssigningTag, setIsAssigningTag] = useState(false); // Local loading state for tag assignment
 
   // Download dialog states
   const [downloadFilters, setDownloadFilters] = useState({
@@ -99,7 +103,7 @@ export function VisitorLog() {
       };
       loadTags();
     }
-  }, [showTagDialog]);
+  }, [showTagDialog, fetchAvailableTags]);
 
   // Get unique persons to meet and purposes for filters
   const uniquePersonsToMeet = [...new Set(visitors.map((v) => v.personToMeet))];
@@ -130,33 +134,62 @@ export function VisitorLog() {
   };
 
   const handleConfirmCheckout = async () => {
-    if (visitorToCheckout) {
-      await checkoutVisitor(visitorToCheckout.id, checkoutPhoto);
-      if (selectedVisitor?.id === visitorToCheckout.id) {
-        const updatedVisitor = visitors.find(
-          (v) => v.id === visitorToCheckout.id,
-        );
-        setSelectedVisitor(updatedVisitor);
+    if (!visitorToCheckout) return;
+
+    setIsCheckingOut(true); // Disable button while processing
+
+    try {
+      const result = await checkoutVisitor(visitorToCheckout.id, checkoutPhoto);
+
+      if (result) {
+        // Success: Close all dialogs first
+        setShowCheckoutCamera(false);
+        setIsCheckoutConfirmOpen(false);
+        setVisitorToCheckout(null);
+        setCheckoutPhoto("");
+
+        // Close details dialog if it was open for this visitor
+        if (selectedVisitor?.id === visitorToCheckout.id) {
+          setIsDetailsOpen(false);
+          setSelectedVisitor(null);
+        }
+
+        // Refresh visitor data
+        await fetchVisitors(); // Call API to fetch updated visitors list
       }
-      setIsCheckoutConfirmOpen(false);
-      setShowCheckoutCamera(false);
-      setVisitorToCheckout(null);
-      setCheckoutPhoto("");
+    } catch (error) {
+      console.error("Checkout error:", error);
+    } finally {
+      setIsCheckingOut(false); // Re-enable button
     }
   };
 
   const handleAssignTag = async () => {
-    if (visitorForTag && selectedTag) {
+    if (!visitorForTag || !selectedTag) return;
+
+    setIsAssigningTag(true);
+
+    try {
       const result = await assignTagToVisitor(visitorForTag.id, selectedTag);
+
       if (result) {
+        // Close tag dialog
         setShowTagDialog(false);
         setVisitorForTag(null);
         setSelectedTag("");
+
         // Update selected visitor if details dialog is open
         if (selectedVisitor?.id === visitorForTag.id) {
           setSelectedVisitor(result);
         }
+
+        // Refresh visitor data to update the list
+        await fetchVisitors();
       }
+    } catch (error) {
+      console.error("Tag assignment error:", error);
+    } finally {
+      setIsAssigningTag(false);
     }
   };
 
@@ -195,7 +228,7 @@ export function VisitorLog() {
           checkInDate >= new Date(downloadFilters.dateRange.startDate)) &&
         (!downloadFilters.dateRange.endDate ||
           checkInDate <=
-            new Date(downloadFilters.dateRange.endDate + "T23:59:59"));
+          new Date(downloadFilters.dateRange.endDate + "T23:59:59"));
 
       const matchesPersonToMeet =
         downloadFilters.personToMeet === "all" ||
@@ -240,7 +273,7 @@ export function VisitorLog() {
     }));
   };
 
-  // Export functions (same as before)
+  // Export functions
   const exportToCSV = (data) => {
     if (data.length === 0) {
       alert("No data to export with selected filters");
@@ -350,25 +383,25 @@ export function VisitorLog() {
           </thead>
           <tbody>
             ${data
-              .map(
-                (row) => `
+        .map(
+          (row) => `
               <tr>
                 ${headers
-                  .map((header) => {
-                    let value = row[header];
-                    if (header === "Status") {
-                      value = `<span class="status-${value.toLowerCase().replace(" ", "-")}">${value}</span>`;
-                    }
-                    if (header === "Tag/Pass" && value !== "Not Assigned") {
-                      value = `<span class="tag-badge">${value}</span>`;
-                    }
-                    return `<td>${value}</td>`;
-                  })
-                  .join("")}
+              .map((header) => {
+                let value = row[header];
+                if (header === "Status") {
+                  value = `<span class="status-${value.toLowerCase().replace(" ", "-")}">${value}</span>`;
+                }
+                if (header === "Tag/Pass" && value !== "Not Assigned") {
+                  value = `<span class="tag-badge">${value}</span>`;
+                }
+                return `<td>${value}</td>`;
+              })
+              .join("")}
               </tr>
             `,
-              )
-              .join("")}
+        )
+        .join("")}
           </tbody>
         </table>
       </body>
@@ -417,6 +450,29 @@ export function VisitorLog() {
       purpose: "all",
       status: "all",
     });
+  };
+
+  // Add this function in VisitorLog.jsx
+  const resendMeetingEmail = async (visitorId) => {
+    try {
+      const response = await fetch(`${API_BASE}/visitors/${visitorId}/resend-email`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        alert('Meeting request email resent successfully!');
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Failed to resend email. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error resending email:', error);
+      alert('Network error. Please try again.');
+    }
   };
 
   return (
@@ -552,7 +608,7 @@ export function VisitorLog() {
                           <Button
                             size="sm"
                             onClick={() => handleCheckoutClick(v)}
-                            disabled={loading}
+                            disabled={isCheckingOut || loading}
                             className="bg-cyan-600 h-9 w-9 p-0"
                           >
                             <LogOut className="w-4 h-4" />
@@ -652,7 +708,7 @@ export function VisitorLog() {
                               <Button
                                 size="sm"
                                 onClick={() => handleCheckoutClick(v)}
-                                disabled={loading}
+                                disabled={isCheckingOut || loading}
                                 className="bg-cyan-600 h-8 w-8 p-0"
                               >
                                 <LogOut className="w-4 h-4" />
@@ -718,17 +774,26 @@ export function VisitorLog() {
                 onClick={() => {
                   setShowCheckoutCamera(false);
                   setCheckoutPhoto("");
+                  setVisitorToCheckout(null);
                 }}
+                disabled={isCheckingOut}
                 className="flex-1"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleConfirmCheckout}
-                disabled={loading}
+                disabled={isCheckingOut}
                 className="flex-1 bg-cyan-600 hover:bg-cyan-700"
               >
-                {loading ? "Processing..." : "Confirm Checkout"}
+                {isCheckingOut ? (
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Processing...
+                  </div>
+                ) : (
+                  "Confirm Checkout"
+                )}
               </Button>
             </div>
           </div>
@@ -778,25 +843,36 @@ export function VisitorLog() {
             <div className="flex gap-3">
               <Button
                 variant="outline"
-                onClick={() => setShowTagDialog(false)}
+                onClick={() => {
+                  setShowTagDialog(false);
+                  setVisitorForTag(null);
+                  setSelectedTag("");
+                }}
+                disabled={isAssigningTag}
                 className="flex-1"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleAssignTag}
-                disabled={
-                  !selectedTag || loading || localAvailableTags.length === 0
-                }
+                disabled={!selectedTag || isAssigningTag || localAvailableTags.length === 0}
                 className="flex-1 bg-purple-600 hover:bg-purple-700"
               >
-                {loading ? "Assigning..." : "Assign Tag"}
+                {isAssigningTag ? (
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Assigning...
+                  </div>
+                ) : (
+                  "Assign Tag"
+                )}
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
+      {/* Visitor Details Dialog */}
       {/* Visitor Details Dialog */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
         <DialogContent className="max-w-[calc(100%-1rem)] sm:max-w-2xl mx-2 sm:mx-0 p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
@@ -981,7 +1057,9 @@ export function VisitorLog() {
                 </div>
               )}
 
-              <div className="flex gap-3">
+              {/* BUTTONS SECTION - Modified with Resend Email Button */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                {/* Assign Tag Button */}
                 {selectedVisitor.active && !selectedVisitor.tagNumber && (
                   <Button
                     onClick={() => {
@@ -989,22 +1067,43 @@ export function VisitorLog() {
                       setShowTagDialog(true);
                       setIsDetailsOpen(false);
                     }}
+                    disabled={isAssigningTag}
                     className="flex-1 bg-purple-600 hover:bg-purple-700"
                   >
                     <Tag className="w-4 h-4 mr-2" />
                     Assign Tag/Pass
                   </Button>
                 )}
+
+                {/* Resend Meeting Email Button - NEW */}
+                {selectedVisitor.active && selectedVisitor.meetingStatus === 'PENDING' && (
+                  <Button
+                    onClick={() => resendMeetingEmail(selectedVisitor.id)}
+                    variant="outline"
+                    className="flex-1"
+                    disabled={loading}
+                  >
+                    <Mail className="w-4 h-4 mr-2" />
+                    Resend Email
+                  </Button>
+                )}
+
+                {/* Checkout Button */}
                 {selectedVisitor.active && (
                   <Button
                     onClick={() => handleCheckoutClick(selectedVisitor)}
-                    disabled={loading}
+                    disabled={isCheckingOut}
                     className="flex-1 bg-cyan-600 hover:bg-cyan-700"
                   >
                     <LogOut className="w-4 h-4 mr-2" />
                     Check Out
                   </Button>
                 )}
+              </div>
+
+              {/* Mobile Info Text */}
+              <div className="text-xs text-center text-gray-400 sm:hidden mt-2">
+                <p>Tap buttons below to take action</p>
               </div>
             </div>
           )}

@@ -35,6 +35,49 @@ export const AppProvider = ({ children }) => {
 
   // const API_BASE = "http://localhost:8598/api";
 
+  // Add to your state in AppProvider
+  const [isAuthInitialized, setIsAuthInitialized] = useState(false);
+
+  // Add this useEffect to check auth on app start
+  useEffect(() => {
+    const initializeAuth = async () => {
+      const storedToken = localStorage.getItem("token");
+      const storedUser = localStorage.getItem("user");
+
+      if (storedToken && storedUser) {
+        setToken(storedToken);
+        setUser(JSON.parse(storedUser));
+
+        // Validate token with backend
+        try {
+          const response = await fetch(`${API_BASE}/users/me`, {
+            headers: {
+              Authorization: `Bearer ${storedToken}`,
+              "Content-Type": "application/json",
+            },
+          });
+
+          if (response.ok) {
+            const userData = await response.json();
+            setUser(userData);
+            localStorage.setItem("user", JSON.stringify(userData));
+          } else {
+            // Token is invalid, clear storage
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            setToken(null);
+            setUser(null);
+          }
+        } catch (error) {
+          console.error("Auth validation error:", error);
+        }
+      }
+      setIsAuthInitialized(true);
+    };
+
+    initializeAuth();
+  }, []);
+
   // Dark mode effect
   useEffect(() => {
     localStorage.setItem("darkMode", JSON.stringify(darkMode));
@@ -45,12 +88,6 @@ export const AppProvider = ({ children }) => {
     }
   }, [darkMode]);
 
-  // Fetch current user on refresh if token exists but user doesn't
-  useEffect(() => {
-    if (token && !user) {
-      fetchCurrentUser();
-    }
-  }, [token]);
 
   // Fetch data when token or user role changes
   useEffect(() => {
@@ -610,6 +647,7 @@ export const AppProvider = ({ children }) => {
       value={{
         darkMode,
         toggleDarkMode,
+              isAuthInitialized,
         token,
         user,
         visitors,
