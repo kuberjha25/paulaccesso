@@ -89,6 +89,7 @@ export function Dashboard() {
             </div>
             <Link to="/log"><Button variant="outline" size="sm">View All</Button></Link>
           </div>
+          
         </CardHeader>
         <CardContent>
           {recentVisitors.length === 0 ? (

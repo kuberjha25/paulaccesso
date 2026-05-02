@@ -10,14 +10,6 @@ import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./ui/table";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -40,15 +32,19 @@ import {
   Filter,
   Users,
   Download,
-  X,
   CalendarDays,
   User,
   FileText,
   CheckCircle,
-  AlertTriangle,
   Camera,
   Tag,
-  Mail
+  Mail,
+  Phone,
+  Building,
+  Clock,
+  Calendar as CalendarIcon,
+  X,
+  Maximize2,
 } from "lucide-react";
 import { useApp } from "./context/AppContext";
 
@@ -59,10 +55,9 @@ export function VisitorLog() {
     loading,
     assignTagToVisitor,
     fetchAvailableTags,
-    availableTags,
     token,
     fetchVisitors,
-    API_BASE
+    API_BASE,
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -73,14 +68,19 @@ export function VisitorLog() {
   const [visitorToCheckout, setVisitorToCheckout] = useState(null);
   const [checkoutPhoto, setCheckoutPhoto] = useState("");
   const [showCheckoutCamera, setShowCheckoutCamera] = useState(false);
-  const [isCheckingOut, setIsCheckingOut] = useState(false); // Local loading state for checkout
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+
+  // Image preview states
+  const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState("");
+  const [previewImageTitle, setPreviewImageTitle] = useState("");
 
   // Tag assignment states
   const [showTagDialog, setShowTagDialog] = useState(false);
   const [visitorForTag, setVisitorForTag] = useState(null);
   const [selectedTag, setSelectedTag] = useState("");
   const [localAvailableTags, setLocalAvailableTags] = useState([]);
-  const [isAssigningTag, setIsAssigningTag] = useState(false); // Local loading state for tag assignment
+  const [isAssigningTag, setIsAssigningTag] = useState(false);
 
   // Download dialog states
   const [downloadFilters, setDownloadFilters] = useState({
@@ -93,6 +93,13 @@ export function VisitorLog() {
     status: "all",
   });
   const [selectedFormat, setSelectedFormat] = useState("csv");
+
+  // Handle image click to open preview
+  const handleImageClick = (imageUrl, title) => {
+    setPreviewImageUrl(imageUrl);
+    setPreviewImageTitle(title);
+    setIsImagePreviewOpen(true);
+  };
 
   // Fetch available tags when dialog opens
   useEffect(() => {
@@ -109,23 +116,26 @@ export function VisitorLog() {
   const uniquePersonsToMeet = [...new Set(visitors.map((v) => v.personToMeet))];
   const uniquePurposes = [...new Set(visitors.map((v) => v.purpose))];
 
-  const filteredVisitors = visitors.filter((v) => {
-    const matchesSearch =
-      !searchQuery ||
-      v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      v.mobile.includes(searchQuery) ||
-      v.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      v.personToMeet.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (v.tagNumber &&
-        v.tagNumber.toLowerCase().includes(searchQuery.toLowerCase()));
+  // First filter visitors, then reverse them (newest/latest first)
+  const filteredAndReversedVisitors = visitors
+    .filter((v) => {
+      const matchesSearch =
+        !searchQuery ||
+        v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.mobile.includes(searchQuery) ||
+        v.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.personToMeet.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (v.tagNumber &&
+          v.tagNumber.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "active" && v.active) ||
-      (statusFilter === "checked-out" && !v.active);
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" && v.active) ||
+        (statusFilter === "checked-out" && !v.active);
 
-    return matchesSearch && matchesStatus;
-  });
+      return matchesSearch && matchesStatus;
+    })
+    .reverse();
 
   const handleCheckoutClick = (visitor) => {
     setVisitorToCheckout(visitor);
@@ -136,31 +146,27 @@ export function VisitorLog() {
   const handleConfirmCheckout = async () => {
     if (!visitorToCheckout) return;
 
-    setIsCheckingOut(true); // Disable button while processing
+    setIsCheckingOut(true);
 
     try {
       const result = await checkoutVisitor(visitorToCheckout.id, checkoutPhoto);
 
       if (result) {
-        // Success: Close all dialogs first
         setShowCheckoutCamera(false);
-        setIsCheckoutConfirmOpen(false);
         setVisitorToCheckout(null);
         setCheckoutPhoto("");
 
-        // Close details dialog if it was open for this visitor
         if (selectedVisitor?.id === visitorToCheckout.id) {
           setIsDetailsOpen(false);
           setSelectedVisitor(null);
         }
 
-        // Refresh visitor data
-        await fetchVisitors(); // Call API to fetch updated visitors list
+        await fetchVisitors();
       }
     } catch (error) {
       console.error("Checkout error:", error);
     } finally {
-      setIsCheckingOut(false); // Re-enable button
+      setIsCheckingOut(false);
     }
   };
 
@@ -173,17 +179,14 @@ export function VisitorLog() {
       const result = await assignTagToVisitor(visitorForTag.id, selectedTag);
 
       if (result) {
-        // Close tag dialog
         setShowTagDialog(false);
         setVisitorForTag(null);
         setSelectedTag("");
 
-        // Update selected visitor if details dialog is open
         if (selectedVisitor?.id === visitorForTag.id) {
           setSelectedVisitor(result);
         }
 
-        // Refresh visitor data to update the list
         await fetchVisitors();
       }
     } catch (error) {
@@ -195,20 +198,38 @@ export function VisitorLog() {
 
   const formatDateTime = (dateString) => {
     if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleString();
-  };
 
-  const formatDateForExport = (dateString) => {
-    if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleString("en-US", {
+    // Parse the date string (assuming it's in UTC or already has timezone info)
+    const date = new Date(dateString);
+
+    // Format in 24-hour format with IST
+    return date.toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
+      hour12: false, // This ensures 24-hour format
     });
   };
+
+  const formatDateForExport = (dateString) => {
+  if (!dateString) return "N/A";
+  
+  const date = new Date(dateString);
+  return date.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+};
 
   const calculateDuration = (checkIn, checkOut) => {
     if (!checkIn) return "N/A";
@@ -219,7 +240,6 @@ export function VisitorLog() {
     return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
   };
 
-  // Get data based on download filters
   const getFilteredDataForDownload = () => {
     return visitors.filter((v) => {
       const checkInDate = new Date(v.checkInTime);
@@ -228,7 +248,7 @@ export function VisitorLog() {
           checkInDate >= new Date(downloadFilters.dateRange.startDate)) &&
         (!downloadFilters.dateRange.endDate ||
           checkInDate <=
-          new Date(downloadFilters.dateRange.endDate + "T23:59:59"));
+            new Date(downloadFilters.dateRange.endDate + "T23:59:59"));
 
       const matchesPersonToMeet =
         downloadFilters.personToMeet === "all" ||
@@ -252,7 +272,6 @@ export function VisitorLog() {
     });
   };
 
-  // Prepare data for export
   const prepareExportData = (dataToExport) => {
     return dataToExport.map((v) => ({
       Name: v.name,
@@ -273,7 +292,6 @@ export function VisitorLog() {
     }));
   };
 
-  // Export functions
   const exportToCSV = (data) => {
     if (data.length === 0) {
       alert("No data to export with selected filters");
@@ -383,25 +401,25 @@ export function VisitorLog() {
           </thead>
           <tbody>
             ${data
-        .map(
-          (row) => `
+              .map(
+                (row) => `
               <tr>
                 ${headers
-              .map((header) => {
-                let value = row[header];
-                if (header === "Status") {
-                  value = `<span class="status-${value.toLowerCase().replace(" ", "-")}">${value}</span>`;
-                }
-                if (header === "Tag/Pass" && value !== "Not Assigned") {
-                  value = `<span class="tag-badge">${value}</span>`;
-                }
-                return `<td>${value}</td>`;
-              })
-              .join("")}
+                  .map((header) => {
+                    let value = row[header];
+                    if (header === "Status") {
+                      value = `<span class="status-${value.toLowerCase().replace(" ", "-")}">${value}</span>`;
+                    }
+                    if (header === "Tag/Pass" && value !== "Not Assigned") {
+                      value = `<span class="tag-badge">${value}</span>`;
+                    }
+                    return `<td>${value}</td>`;
+                  })
+                  .join("")}
               </tr>
             `,
-        )
-        .join("")}
+              )
+              .join("")}
           </tbody>
         </table>
       </body>
@@ -452,26 +470,28 @@ export function VisitorLog() {
     });
   };
 
-  // Add this function in VisitorLog.jsx
   const resendMeetingEmail = async (visitorId) => {
     try {
-      const response = await fetch(`${API_BASE}/visitors/${visitorId}/resend-email`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const response = await fetch(
+        `${API_BASE}/visitors/${visitorId}/resend-email`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        },
+      );
 
       if (response.ok) {
-        alert('Meeting request email resent successfully!');
+        alert("Meeting request email resent successfully!");
       } else {
         const data = await response.json();
-        alert(data.error || 'Failed to resend email. Please try again.');
+        alert(data.error || "Failed to resend email. Please try again.");
       }
     } catch (error) {
-      console.error('Error resending email:', error);
-      alert('Network error. Please try again.');
+      console.error("Error resending email:", error);
+      alert("Network error. Please try again.");
     }
   };
 
@@ -484,7 +504,7 @@ export function VisitorLog() {
             Visitor Log
           </h2>
           <p className="text-sm sm:text-base text-gray-700 dark:text-gray-300 mt-1 sm:mt-2">
-            View and manage visitor records
+            View and manage visitor records (Latest first)
           </p>
         </div>
         <div className="flex gap-2">
@@ -500,231 +520,207 @@ export function VisitorLog() {
         </div>
       </div>
 
-      {/* Main Card */}
+      {/* Search and Filter Section */}
       <Card>
-        <CardHeader className="space-y-4">
-          <div className="flex flex-col lg:flex-row gap-4 justify-between">
-            <div>
-              <CardTitle className="text-xl sm:text-2xl">
-                All Visitors
-              </CardTitle>
-              <CardDescription className="text-sm">
-                {filteredVisitors.length} visitor(s) found
-              </CardDescription>
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Search by name, mobile, tag, person to meet..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
             </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Search name, tag, mobile..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 w-full sm:w-64 text-sm"
-                />
-              </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full sm:w-32">
-                  <Filter className="w-4 h-4 mr-2" />
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="checked-out">Checked Out</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-36">
+                <Filter className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="checked-out">Checked Out</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </CardHeader>
-        <CardContent>
-          {filteredVisitors.length === 0 ? (
-            <div className="text-center py-12 sm:py-16">
-              <Calendar className="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-gray-400 mb-4" />
-              <p className="text-sm sm:text-base text-gray-500">
-                No visitors found
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* Mobile Card View */}
-              <div className="block lg:hidden space-y-3">
-                {filteredVisitors.map((v) => (
-                  <div key={v.id} className="border rounded-lg p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        {v.photo ? (
-                          <img
-                            src={v.photo}
-                            alt={v.name}
-                            className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <Users className="w-6 h-6 text-gray-400" />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-base truncate">
-                            {v.name}
-                          </p>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {!v.active ? (
-                              <Badge variant="secondary" className="text-xs">
-                                Checked Out
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-green-600 text-xs">
-                                Active
-                              </Badge>
-                            )}
-                            {v.tagNumber && (
-                              <Badge className="bg-purple-600 text-xs">
-                                <Tag className="w-3 h-3 mr-1" />
-                                {v.tagNumber}
-                              </Badge>
-                            )}
-                            {v.checkoutPhoto && !v.active && (
-                              <Badge variant="outline" className="text-xs">
-                                <Camera className="w-3 h-3 mr-1" />
-                                Photo
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 ml-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedVisitor(v);
-                            setIsDetailsOpen(true);
-                          }}
-                          className="h-9 w-9 p-0"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        {v.active && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleCheckoutClick(v)}
-                            disabled={isCheckingOut || loading}
-                            className="bg-cyan-600 h-9 w-9 p-0"
-                          >
-                            <LogOut className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Desktop Table View */}
-              <div className="hidden lg:block overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16">Photo</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Contact</TableHead>
-                      <TableHead>Meeting With</TableHead>
-                      <TableHead>Tag/Pass</TableHead>
-                      <TableHead>Check In</TableHead>
-                      <TableHead>Check Out</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="w-24">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredVisitors.map((v) => (
-                      <TableRow key={v.id}>
-                        <TableCell>
-                          {v.photo ? (
-                            <img
-                              src={v.photo}
-                              alt={v.name}
-                              className="w-10 h-10 rounded-lg object-cover"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
-                              <Users className="w-5 h-5 text-gray-400" />
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-medium">{v.name}</TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {v.mobile}
-                            <br />
-                            <span className="text-xs text-gray-500">
-                              {v.email}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>{v.personToMeet}</TableCell>
-                        <TableCell>
-                          {v.tagNumber ? (
-                            <Badge className="bg-purple-600">
-                              <Tag className="w-3 h-3 mr-1" />
-                              {v.tagNumber}
-                            </Badge>
-                          ) : (
-                            <span className="text-gray-400 text-sm">
-                              Not assigned
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-sm whitespace-nowrap">
-                          {formatDateTime(v.checkInTime)}
-                        </TableCell>
-                        <TableCell className="text-sm whitespace-nowrap">
-                          {formatDateTime(v.checkOutTime)}
-                          {v.checkoutPhoto && !v.active && (
-                            <Camera className="w-3 h-3 inline ml-1 text-gray-400" />
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {!v.active ? (
-                            <Badge variant="secondary">Checked Out</Badge>
-                          ) : (
-                            <Badge className="bg-green-600">Active</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedVisitor(v);
-                                setIsDetailsOpen(true);
-                              }}
-                              className="h-8 w-8 p-0"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            {v.active && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleCheckoutClick(v)}
-                                disabled={isCheckingOut || loading}
-                                className="bg-cyan-600 h-8 w-8 p-0"
-                              >
-                                <LogOut className="w-4 h-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </>
-          )}
+          <p className="text-sm text-gray-500 mt-3">
+            {filteredAndReversedVisitors.length} visitor(s) found
+          </p>
         </CardContent>
       </Card>
+
+      {/* Image Preview Modal */}
+      <Dialog open={isImagePreviewOpen} onOpenChange={setIsImagePreviewOpen}>
+        <DialogContent className="max-w-[90vw] max-h-[90vh] w-auto h-auto p-0 bg-black/95 border-none [&>button:first-child]:hidden">
+          <button
+            onClick={() => setIsImagePreviewOpen(false)}
+            className="absolute top-4 right-4 z-10 text-white hover:text-gray-300 transition-colors bg-black/50 rounded-full p-2"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          {previewImageTitle && (
+            <div className="absolute top-4 left-4 z-10 text-white bg-black/50 px-3 py-1 rounded-lg">
+              <p className="text-sm font-medium">{previewImageTitle}</p>
+            </div>
+          )}
+          <div className="flex items-center justify-center w-full h-full min-h-[50vh]">
+            <img
+              src={previewImageUrl}
+              alt={previewImageTitle}
+              className="max-w-full max-h-[85vh] object-contain"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Visitor Cards - Responsive Grid with Reversed Order */}
+      {filteredAndReversedVisitors.length === 0 ? (
+        <Card>
+          <CardContent className="text-center py-12 sm:py-16">
+            <Calendar className="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-gray-400 mb-4" />
+            <p className="text-sm sm:text-base text-gray-500">
+              No visitors found
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredAndReversedVisitors.map((visitor) => (
+            <Card
+              key={visitor.id}
+              className="hover:shadow-lg transition-shadow"
+            >
+              <CardContent className="p-4 sm:p-6">
+                {/* Header with Photo and Name - Photo is clickable */}
+                <div className="flex items-start gap-3 mb-4">
+                  {visitor.photo ? (
+                    <div
+                      className="cursor-pointer group relative flex-shrink-0"
+                      onClick={() =>
+                        handleImageClick(
+                          visitor.photo,
+                          `${visitor.name}'s Photo`,
+                        )
+                      }
+                    >
+                      <img
+                        src={visitor.photo}
+                        alt={visitor.name}
+                        className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg object-cover group-hover:opacity-90 transition-opacity"
+                      />
+                      <div className="absolute inset-0 bg-black/50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Maximize2 className="w-5 h-5 text-white" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Users className="w-7 h-7 sm:w-8 sm:h-8 text-gray-400" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <h3
+                      className="font-semibold text-base sm:text-lg truncate"
+                      title={visitor.name}
+                    >
+                      {visitor.name}
+                    </h3>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {visitor.active ? (
+                        <Badge className="bg-green-600 text-xs">Active</Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">
+                          Checked Out
+                        </Badge>
+                      )}
+                      {visitor.tagNumber && (
+                        <Badge className="bg-purple-600 text-xs">
+                          <Tag className="w-3 h-3 mr-1" />
+                          {visitor.tagNumber}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Visitor Details */}
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <span className="truncate" title={visitor.mobile}>
+                      {visitor.mobile}
+                    </span>
+                  </div>
+                  {visitor.email && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Mail className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <span className="truncate" title={visitor.email}>
+                        {visitor.email}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-sm">
+                    <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <span className="truncate" title={visitor.personToMeet}>
+                      Meeting: {visitor.personToMeet}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Clock className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <span className="truncate">
+                      In: {formatDateTime(visitor.checkInTime)}
+                    </span>
+                  </div>
+                  {visitor.checkOutTime && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <CalendarIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <span className="truncate">
+                        Out: {formatDateTime(visitor.checkOutTime)}
+                      </span>
+                    </div>
+                  )}
+                  {visitor.company && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Building className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <span className="truncate" title={visitor.company}>
+                        {visitor.company}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2 pt-3 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedVisitor(visitor);
+                      setIsDetailsOpen(true);
+                    }}
+                    className="flex-1"
+                    size="sm"
+                  >
+                    <Eye className="w-4 h-4 mr-2" />
+                    View
+                  </Button>
+                  {visitor.active && (
+                    <Button
+                      onClick={() => handleCheckoutClick(visitor)}
+                      disabled={isCheckingOut || loading}
+                      className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+                      size="sm"
+                    >
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Checkout
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Checkout Dialog with Camera */}
       <Dialog open={showCheckoutCamera} onOpenChange={setShowCheckoutCamera}>
@@ -740,7 +736,7 @@ export function VisitorLog() {
 
           <div className="space-y-4">
             <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <p className="text-sm">
+              <p className="text-sm break-words">
                 <strong>Check-in Time:</strong>{" "}
                 {formatDateTime(visitorToCheckout?.checkInTime)}
               </p>
@@ -855,7 +851,11 @@ export function VisitorLog() {
               </Button>
               <Button
                 onClick={handleAssignTag}
-                disabled={!selectedTag || isAssigningTag || localAvailableTags.length === 0}
+                disabled={
+                  !selectedTag ||
+                  isAssigningTag ||
+                  localAvailableTags.length === 0
+                }
                 className="flex-1 bg-purple-600 hover:bg-purple-700"
               >
                 {isAssigningTag ? (
@@ -873,7 +873,6 @@ export function VisitorLog() {
       </Dialog>
 
       {/* Visitor Details Dialog */}
-      {/* Visitor Details Dialog */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
         <DialogContent className="max-w-[calc(100%-1rem)] sm:max-w-2xl mx-2 sm:mx-0 p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -887,15 +886,32 @@ export function VisitorLog() {
           {selectedVisitor && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                {selectedVisitor.photo && (
-                  <img
-                    src={selectedVisitor.photo}
-                    alt={selectedVisitor.name}
-                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg object-cover"
-                  />
+                {selectedVisitor.photo ? (
+                  <div
+                    className="cursor-pointer group relative"
+                    onClick={() =>
+                      handleImageClick(
+                        selectedVisitor.photo,
+                        `${selectedVisitor.name}'s Photo`,
+                      )
+                    }
+                  >
+                    <img
+                      src={selectedVisitor.photo}
+                      alt={selectedVisitor.name}
+                      className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg object-cover group-hover:opacity-90 transition-opacity"
+                    />
+                    <div className="absolute inset-0 bg-black/50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Maximize2 className="w-5 h-5 text-white" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
+                    <Users className="w-10 h-10 text-gray-400" />
+                  </div>
                 )}
                 <div>
-                  <h3 className="text-lg sm:text-xl font-semibold">
+                  <h3 className="text-lg sm:text-xl font-semibold break-words">
                     {selectedVisitor.name}
                   </h3>
                   <div className="flex flex-wrap gap-2 mt-1">
@@ -917,31 +933,31 @@ export function VisitorLog() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
                 <div>
                   <p className="text-xs text-gray-500">Mobile</p>
-                  <p className="font-medium text-sm">
+                  <p className="font-medium text-sm break-all">
                     {selectedVisitor.mobile}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Email</p>
                   <p className="font-medium text-sm break-all">
-                    {selectedVisitor.email}
+                    {selectedVisitor.email || "N/A"}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Company</p>
-                  <p className="font-medium text-sm">
+                  <p className="font-medium text-sm break-words">
                     {selectedVisitor.company || "N/A"}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Person to Meet</p>
-                  <p className="font-medium text-sm">
+                  <p className="font-medium text-sm break-words">
                     {selectedVisitor.personToMeet}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Purpose</p>
-                  <p className="font-medium text-sm">
+                  <p className="font-medium text-sm break-words">
                     {selectedVisitor.purpose}
                   </p>
                 </div>
@@ -953,13 +969,13 @@ export function VisitorLog() {
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Check In</p>
-                  <p className="font-medium text-sm">
+                  <p className="font-medium text-sm break-words">
                     {formatDateTime(selectedVisitor.checkInTime)}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Check Out</p>
-                  <p className="font-medium text-sm">
+                  <p className="font-medium text-sm break-words">
                     {formatDateTime(selectedVisitor.checkOutTime)}
                   </p>
                 </div>
@@ -974,21 +990,34 @@ export function VisitorLog() {
                 </div>
               </div>
 
-              {/* Checkout Photo Display */}
+              {/* Checkout Photo Display - Clickable */}
               {selectedVisitor.checkoutPhoto && (
                 <div className="mt-4 p-3 sm:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <h4 className="font-semibold mb-2 text-sm">
                     Checkout Photo:
                   </h4>
-                  <img
-                    src={selectedVisitor.checkoutPhoto}
-                    alt="Checkout"
-                    className="w-full max-w-md rounded-lg object-cover"
-                  />
+                  <div
+                    className="cursor-pointer group relative inline-block"
+                    onClick={() =>
+                      handleImageClick(
+                        selectedVisitor.checkoutPhoto,
+                        `Checkout Photo - ${selectedVisitor.name}`,
+                      )
+                    }
+                  >
+                    <img
+                      src={selectedVisitor.checkoutPhoto}
+                      alt="Checkout"
+                      className="w-full max-w-md rounded-lg object-cover group-hover:opacity-90 transition-opacity"
+                    />
+                    <div className="absolute inset-0 bg-black/50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Maximize2 className="w-6 h-6 text-white" />
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {/* ID Proof Display */}
+              {/* ID Proof Display - Clickable */}
               {selectedVisitor.idProof &&
                 (() => {
                   try {
@@ -999,10 +1028,10 @@ export function VisitorLog() {
                           ID Proof:
                         </h4>
                         <div className="space-y-1 text-sm">
-                          <p>
+                          <p className="break-words">
                             <strong>Type:</strong> {idProof.type}
                           </p>
-                          <p>
+                          <p className="break-words">
                             <strong>Number:</strong> {idProof.number || "N/A"}
                           </p>
                           {idProof.photo && (
@@ -1010,11 +1039,24 @@ export function VisitorLog() {
                               <p className="text-xs text-gray-500 mb-1">
                                 ID Photo:
                               </p>
-                              <img
-                                src={idProof.photo}
-                                alt="ID Proof"
-                                className="w-full max-w-md rounded-lg object-cover"
-                              />
+                              <div
+                                className="cursor-pointer group relative inline-block"
+                                onClick={() =>
+                                  handleImageClick(
+                                    idProof.photo,
+                                    `ID Proof - ${idProof.type}`,
+                                  )
+                                }
+                              >
+                                <img
+                                  src={idProof.photo}
+                                  alt="ID Proof"
+                                  className="w-full max-w-md rounded-lg object-cover group-hover:opacity-90 transition-opacity"
+                                />
+                                <div className="absolute inset-0 bg-black/50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                  <Maximize2 className="w-6 h-6 text-white" />
+                                </div>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1030,18 +1072,31 @@ export function VisitorLog() {
                   <h4 className="font-semibold mb-2 text-sm">Meeting With:</h4>
                   <div className="flex items-center gap-3">
                     {selectedVisitor.personToMeetDetails.photo ? (
-                      <img
-                        src={selectedVisitor.personToMeetDetails.photo}
-                        alt={selectedVisitor.personToMeetDetails.name}
-                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover"
-                      />
+                      <div
+                        className="cursor-pointer group relative"
+                        onClick={() =>
+                          handleImageClick(
+                            selectedVisitor.personToMeetDetails.photo,
+                            `${selectedVisitor.personToMeetDetails.name}'s Photo`,
+                          )
+                        }
+                      >
+                        <img
+                          src={selectedVisitor.personToMeetDetails.photo}
+                          alt={selectedVisitor.personToMeetDetails.name}
+                          className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover group-hover:opacity-90 transition-opacity"
+                        />
+                        <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <Maximize2 className="w-3 h-3 text-white" />
+                        </div>
+                      </div>
                     ) : (
                       <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
                         <Users className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500" />
                       </div>
                     )}
                     <div>
-                      <p className="font-medium text-sm">
+                      <p className="font-medium text-sm break-words">
                         {selectedVisitor.personToMeetDetails.name}
                       </p>
                       <p className="text-xs text-gray-500 break-all">
@@ -1057,9 +1112,8 @@ export function VisitorLog() {
                 </div>
               )}
 
-              {/* BUTTONS SECTION - Modified with Resend Email Button */}
+              {/* BUTTONS SECTION */}
               <div className="flex flex-col sm:flex-row gap-3">
-                {/* Assign Tag Button */}
                 {selectedVisitor.active && !selectedVisitor.tagNumber && (
                   <Button
                     onClick={() => {
@@ -1075,20 +1129,19 @@ export function VisitorLog() {
                   </Button>
                 )}
 
-                {/* Resend Meeting Email Button - NEW */}
-                {selectedVisitor.active && selectedVisitor.meetingStatus === 'PENDING' && (
-                  <Button
-                    onClick={() => resendMeetingEmail(selectedVisitor.id)}
-                    variant="outline"
-                    className="flex-1"
-                    disabled={loading}
-                  >
-                    <Mail className="w-4 h-4 mr-2" />
-                    Resend Email
-                  </Button>
-                )}
+                {selectedVisitor.active &&
+                  selectedVisitor.meetingStatus === "PENDING" && (
+                    <Button
+                      onClick={() => resendMeetingEmail(selectedVisitor.id)}
+                      variant="outline"
+                      className="flex-1"
+                      disabled={loading}
+                    >
+                      <Mail className="w-4 h-4 mr-2" />
+                      Resend Email
+                    </Button>
+                  )}
 
-                {/* Checkout Button */}
                 {selectedVisitor.active && (
                   <Button
                     onClick={() => handleCheckoutClick(selectedVisitor)}
@@ -1101,7 +1154,6 @@ export function VisitorLog() {
                 )}
               </div>
 
-              {/* Mobile Info Text */}
               <div className="text-xs text-center text-gray-400 sm:hidden mt-2">
                 <p>Tap buttons below to take action</p>
               </div>
@@ -1126,7 +1178,7 @@ export function VisitorLog() {
           </DialogHeader>
 
           <div className="space-y-4 sm:space-y-6 py-4">
-            {/* Date Range Filter */}
+            {/* Date Range Filter - Fixed with proper calendar */}
             <div className="space-y-2">
               <label className="text-sm font-semibold flex items-center gap-2">
                 <CalendarDays className="w-4 h-4" />
@@ -1135,37 +1187,49 @@ export function VisitorLog() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="text-xs text-gray-500">Start Date</label>
-                  <Input
-                    type="date"
-                    value={downloadFilters.dateRange.startDate}
-                    onChange={(e) =>
-                      setDownloadFilters({
-                        ...downloadFilters,
-                        dateRange: {
-                          ...downloadFilters.dateRange,
-                          startDate: e.target.value,
-                        },
-                      })
-                    }
-                    className="text-sm"
-                  />
+                  <div className="relative">
+                    <Input
+                      type="date"
+                      value={downloadFilters.dateRange.startDate}
+                      onChange={(e) =>
+                        setDownloadFilters({
+                          ...downloadFilters,
+                          dateRange: {
+                            ...downloadFilters.dateRange,
+                            startDate: e.target.value,
+                          },
+                        })
+                      }
+                      className="text-sm cursor-pointer"
+                      onFocus={(e) =>
+                        e.target.showPicker && e.target.showPicker()
+                      }
+                    />
+                    <CalendarDays className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs text-gray-500">End Date</label>
-                  <Input
-                    type="date"
-                    value={downloadFilters.dateRange.endDate}
-                    onChange={(e) =>
-                      setDownloadFilters({
-                        ...downloadFilters,
-                        dateRange: {
-                          ...downloadFilters.dateRange,
-                          endDate: e.target.value,
-                        },
-                      })
-                    }
-                    className="text-sm"
-                  />
+                  <div className="relative">
+                    <Input
+                      type="date"
+                      value={downloadFilters.dateRange.endDate}
+                      onChange={(e) =>
+                        setDownloadFilters({
+                          ...downloadFilters,
+                          dateRange: {
+                            ...downloadFilters.dateRange,
+                            endDate: e.target.value,
+                          },
+                        })
+                      }
+                      className="text-sm cursor-pointer"
+                      onFocus={(e) =>
+                        e.target.showPicker && e.target.showPicker()
+                      }
+                    />
+                    <CalendarDays className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
                 </div>
               </div>
             </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { CameraCapture } from "./CameraCapture";
 import {
@@ -12,15 +12,8 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
 import { useApp } from "./context/AppContext";
-import { CheckCircle2, XCircle, Plus } from "lucide-react";
+import { CheckCircle2, XCircle, Plus, Search, ChevronDown } from "lucide-react";
 
 export function VisitorRegistration() {
   const navigate = useNavigate();
@@ -33,14 +26,124 @@ export function VisitorRegistration() {
     email: "",
     company: "",
     address: "",
-    personToMeetEmpId: "", // ← Changed from personToMeet
+    personToMeetEmpId: "",
     purpose: "",
     otherPurpose: "",
     idType: "",
     idNumber: "",
   });
-  const [selectedEmployeeEmpId, setSelectedEmployeeEmpId] = useState(""); // ← Changed from selectedEmployee
+  const [selectedEmployeeEmpId, setSelectedEmployeeEmpId] = useState("");
   const [errors, setErrors] = useState({});
+
+  // State for custom searchable dropdown (Person to Meet)
+  const [isEmployeeDropdownOpen, setIsEmployeeDropdownOpen] = useState(false);
+  const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
+  const employeeDropdownRef = useRef(null);
+
+  // State for Purpose dropdown
+  const [isPurposeDropdownOpen, setIsPurposeDropdownOpen] = useState(false);
+  const purposeDropdownRef = useRef(null);
+
+  // State for ID Type dropdown
+  const [isIdTypeDropdownOpen, setIsIdTypeDropdownOpen] = useState(false);
+  const idTypeDropdownRef = useRef(null);
+
+  // Sort employees A to Z by name
+  const sortedEmployees = [...employees].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+
+  // Filter employees based on search term
+  const filteredEmployees = sortedEmployees.filter((emp) => {
+    const searchLower = employeeSearchTerm.toLowerCase();
+    return (
+      emp.name.toLowerCase().includes(searchLower) ||
+      emp.empId.toLowerCase().includes(searchLower) ||
+      (emp.designation && emp.designation.toLowerCase().includes(searchLower))
+    );
+  });
+
+  // Handle click outside for Employee dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        employeeDropdownRef.current &&
+        !employeeDropdownRef.current.contains(event.target)
+      ) {
+        setIsEmployeeDropdownOpen(false);
+        setEmployeeSearchTerm("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Handle click outside for Purpose dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        purposeDropdownRef.current &&
+        !purposeDropdownRef.current.contains(event.target)
+      ) {
+        setIsPurposeDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Handle click outside for ID Type dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        idTypeDropdownRef.current &&
+        !idTypeDropdownRef.current.contains(event.target)
+      ) {
+        setIsIdTypeDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSelectEmployee = (empId) => {
+    setSelectedEmployeeEmpId(empId);
+    setIsEmployeeDropdownOpen(false);
+    setEmployeeSearchTerm("");
+    if (errors.personToMeetEmpId) {
+      setErrors({ ...errors, personToMeetEmpId: "" });
+    }
+  };
+
+  const handleSelectPurpose = (purpose) => {
+    setFormData({
+      ...formData,
+      purpose: purpose,
+      otherPurpose: purpose === "Other" ? formData.otherPurpose : "",
+    });
+    setIsPurposeDropdownOpen(false);
+    if (errors.purpose) {
+      setErrors({ ...errors, purpose: "" });
+    }
+  };
+
+  const handleSelectIdType = (idType) => {
+    setFormData({ ...formData, idType: idType });
+    setIsIdTypeDropdownOpen(false);
+    if (errors.idType) {
+      setErrors({ ...errors, idType: "" });
+    }
+  };
+
+  const getSelectedEmployeeName = () => {
+    const employee = employees.find(
+      (emp) => emp.empId === selectedEmployeeEmpId,
+    );
+    if (employee) {
+      return `${employee.name} - ${employee.empId}${employee.designation ? ` (${employee.designation})` : ""}`;
+    }
+    return "";
+  };
 
   const purposeOptions = [
     "Business Meeting",
@@ -67,20 +170,6 @@ export function VisitorRegistration() {
     if (errors[e.target.name]) setErrors({ ...errors, [e.target.name]: "" });
   };
 
-  const handlePurposeChange = (value) => {
-    setFormData({
-      ...formData,
-      purpose: value,
-      otherPurpose: value === "Other" ? formData.otherPurpose : "",
-    });
-    if (errors.purpose) setErrors({ ...errors, purpose: "" });
-  };
-
-  const handleIdTypeChange = (value) => {
-    setFormData({ ...formData, idType: value });
-    if (errors.idType) setErrors({ ...errors, idType: "" });
-  };
-
   const validate = () => {
     const newErrors = {};
     if (!formData.name) newErrors.name = "Name is required";
@@ -91,7 +180,7 @@ export function VisitorRegistration() {
     }
 
     if (!selectedEmployeeEmpId)
-      newErrors.personToMeetEmpId = "Please select person to meet"; // ← Changed
+      newErrors.personToMeetEmpId = "Please select person to meet";
     if (!formData.purpose) newErrors.purpose = "Purpose is required";
     if (formData.purpose === "Other" && !formData.otherPurpose)
       newErrors.otherPurpose = "Please specify purpose";
@@ -123,7 +212,7 @@ export function VisitorRegistration() {
       email: formData.email || "",
       company: formData.company || "",
       address: formData.address || "",
-      personToMeetEmpId: selectedEmployeeEmpId, // ← Changed from personToMeet
+      personToMeetEmpId: selectedEmployeeEmpId,
       purpose: finalPurpose,
       photo: capturedImage,
       idProof: idProofData ? JSON.stringify(idProofData) : null,
@@ -152,6 +241,10 @@ export function VisitorRegistration() {
     setCapturedImage("");
     setCapturedIdProof("");
     setErrors({});
+    setEmployeeSearchTerm("");
+    setIsEmployeeDropdownOpen(false);
+    setIsPurposeDropdownOpen(false);
+    setIsIdTypeDropdownOpen(false);
   };
 
   return (
@@ -258,29 +351,69 @@ export function VisitorRegistration() {
               />
             </div>
 
-            {/* Person to Meet - Now using empId */}
+            {/* Person to Meet - Searchable Dropdown */}
             <div>
               <Label className="mb-2 block">
                 Person to Meet <span className="text-red-500">*</span>
               </Label>
-              <Select
-                value={selectedEmployeeEmpId}
-                onValueChange={setSelectedEmployeeEmpId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select employee" />
-                </SelectTrigger>
-                <SelectContent>
-                  {employees.map((emp) => (
-                    <SelectItem key={emp.id} value={emp.empId}>
-                      {" "}
-                      {/* ← Use empId as value */}
-                      {emp.name} - {emp.empId}{" "}
-                      {emp.designation ? `(${emp.designation})` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="relative" ref={employeeDropdownRef}>
+                <div
+                  className="flex items-center justify-between border rounded-md px-3 py-2 cursor-pointer bg-white dark:bg-gray-800"
+                  onClick={() =>
+                    setIsEmployeeDropdownOpen(!isEmployeeDropdownOpen)
+                  }
+                >
+                  <span
+                    className={selectedEmployeeEmpId ? "" : "text-gray-400"}
+                  >
+                    {selectedEmployeeEmpId
+                      ? getSelectedEmployeeName()
+                      : "Select employee"}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                </div>
+
+                {isEmployeeDropdownOpen && (
+                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border rounded-md shadow-lg">
+                    <div className="p-2 border-b">
+                      <div className="relative">
+                        <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <Input
+                          type="text"
+                          placeholder="Search by name, ID, or designation..."
+                          value={employeeSearchTerm}
+                          onChange={(e) =>
+                            setEmployeeSearchTerm(e.target.value)
+                          }
+                          className="pl-8"
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                      {filteredEmployees.length > 0 ? (
+                        filteredEmployees.map((emp) => (
+                          <div
+                            key={emp.id}
+                            className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                            onClick={() => handleSelectEmployee(emp.empId)}
+                          >
+                            <div className="font-medium">{emp.name}</div>
+                            <div className="text-xs text-gray-500">
+                              {emp.empId}{" "}
+                              {emp.designation && `• ${emp.designation}`}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-3 py-4 text-center text-gray-500">
+                          No employees found
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               {errors.personToMeetEmpId && (
                 <p className="text-red-500 text-sm mt-1">
                   {errors.personToMeetEmpId}
@@ -288,25 +421,38 @@ export function VisitorRegistration() {
               )}
             </div>
 
+            {/* Purpose of Visit - Non-searchable Dropdown */}
             <div>
               <Label className="mb-2 block">
                 Purpose of Visit <span className="text-red-500">*</span>
               </Label>
-              <Select
-                value={formData.purpose}
-                onValueChange={handlePurposeChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select purpose" />
-                </SelectTrigger>
-                <SelectContent>
-                  {purposeOptions.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="relative" ref={purposeDropdownRef}>
+                <div
+                  className="flex items-center justify-between border rounded-md px-3 py-2 cursor-pointer bg-white dark:bg-gray-800"
+                  onClick={() =>
+                    setIsPurposeDropdownOpen(!isPurposeDropdownOpen)
+                  }
+                >
+                  <span className={formData.purpose ? "" : "text-gray-400"}>
+                    {formData.purpose || "Select purpose"}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                </div>
+
+                {isPurposeDropdownOpen && (
+                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {purposeOptions.map((option) => (
+                      <div
+                        key={option}
+                        className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                        onClick={() => handleSelectPurpose(option)}
+                      >
+                        {option}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               {errors.purpose && (
                 <p className="text-red-500 text-sm mt-1">{errors.purpose}</p>
               )}
@@ -343,21 +489,33 @@ export function VisitorRegistration() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label className="mb-2 block">ID Type</Label>
-                  <Select
-                    value={formData.idType}
-                    onValueChange={handleIdTypeChange}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select ID type (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {idProofOptions.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="relative" ref={idTypeDropdownRef}>
+                    <div
+                      className="flex items-center justify-between border rounded-md px-3 py-2 cursor-pointer bg-white dark:bg-gray-800"
+                      onClick={() =>
+                        setIsIdTypeDropdownOpen(!isIdTypeDropdownOpen)
+                      }
+                    >
+                      <span className={formData.idType ? "" : "text-gray-400"}>
+                        {formData.idType || "Select ID type (optional)"}
+                      </span>
+                      <ChevronDown className="w-4 h-4 text-gray-500" />
+                    </div>
+
+                    {isIdTypeDropdownOpen && (
+                      <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                        {idProofOptions.map((option) => (
+                          <div
+                            key={option}
+                            className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                            onClick={() => handleSelectIdType(option)}
+                          >
+                            {option}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <Label className="mb-2 block">ID Number</Label>
